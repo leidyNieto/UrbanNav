@@ -19,11 +19,20 @@ import {
 } from '@loopback/rest';
 import {User} from '../models';
 import {UserRepository} from '../repositories';
+import { service } from '@loopback/core';
+import { SeguridadUsuarioService } from '../services';
 
 export class UserController {
+  //en el controlador se inyectan dependencias generadas por loopback
   constructor(
+    //donde dice que se necesita un repositorio,este es de usuarioRepositori, dpnde definimos una variablede acceso publico,
+    //esta para acceder a todas las acciones del crud dentro de la entidad usuario
     @repository(UserRepository)
     public userRepository : UserRepository,
+    //se invoca el servicio de seguridad para que se pueda acceder a las funciones de este
+    //en este caso el de crear clave,cifrar
+    @service(SeguridadUsuarioService)
+    public servicioSeguridad:SeguridadUsuarioService,
   ) {}
 
   @post('/user')
@@ -44,6 +53,12 @@ export class UserController {
     })
     user: Omit<User, '_id'>,
   ): Promise<User> {
+    //crear la clave
+    let clave = this.servicioSeguridad.crearClave();
+    //cifrar la clave
+    let claveCifrada = this.servicioSeguridad.cifrarTexto(clave);
+    //asignar la clave cifrada al usuario
+    user.clave = claveCifrada;
     return this.userRepository.create(user);
   }
 
