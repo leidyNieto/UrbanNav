@@ -235,7 +235,8 @@ async ValidarPermisosDeUsuario(
   )
   datos: PermisosRolMenu
 ): Promise<UserProfile | undefined> {
-  return this.servicioAuth.VerificarPermisoDeUsuarioPorRol(datos.idRol, datos.idMenu, datos.accion);
+  let idRol = this.servicioSeguridad.obtenerRolDesdeToken(datos.token);
+  return this.servicioAuth.VerificarPermisoDeUsuarioPorRol(idRol, datos.idMenu, datos.accion);
 }
 
 @post('/verificar-2fa')
