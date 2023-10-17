@@ -21,6 +21,8 @@ import {User} from '../models';
 import {UserRepository} from '../repositories';
 import { service } from '@loopback/core';
 import { SeguridadUsuarioService } from '../services';
+import { authenticate } from '@loopback/authentication';
+import { configuracionSeguridaad } from '../config/seguridad.config';
 
 export class UserController {
   //en el controlador se inyectan dependencias generadas por loopback
@@ -73,6 +75,13 @@ export class UserController {
     return this.userRepository.count(where);
   }
 
+  //este metodo va a estar protegido por el componente de autenticacion
+  @authenticate({
+    //esto lo hago por medio de un objeto
+    //se envia el nombre de la estrategia de autenticacion
+    strategy:"auth",
+    //se envia una opciones,
+    options:[configuracionSeguridaad.menuUsuarioId,configuracionSeguridaad.listarAccion]})
   @get('/user')
   @response(200, {
     description: 'Array of User model instances',

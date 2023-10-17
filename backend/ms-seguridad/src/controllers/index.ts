@@ -9,3 +9,4 @@ export * from './user.controller';
 export * from './menu.controller';
 export * from './login.controller';
 export * from './rol.controller';
+export * from './permisos.controller';
