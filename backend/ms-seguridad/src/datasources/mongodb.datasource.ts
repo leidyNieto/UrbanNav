@@ -1,10 +1,11 @@
 import {inject, lifeCycleObserver, LifeCycleObserver} from '@loopback/core';
 import {juggler} from '@loopback/repository';
+import { configuracionSeguridaad } from '../config/seguridad.config';
 
 const config = {
   name: 'mongodb',
   connector: 'mongodb',
-  url: 'mongodb+srv://user_mongo_urbannav:adminurban@clustermongo.eivitxh.mongodb.net/seguridad?retryWrites=true&w=majority',
+  url: configuracionSeguridaad.mongoDbConnectionString,
   host: 'localhost',
   port: 27017,
   user: '',
