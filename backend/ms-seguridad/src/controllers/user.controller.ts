@@ -23,7 +23,7 @@ import {
 import {UserProfile} from '@loopback/security';
 import {ConfiguracionNotificaciones} from '../config/notificaciones.config';
 import {configuracionSeguridaad} from '../config/seguridad.config';
-import {Credenciales, FactorDeAutenticacionPorCodigo, Login, PermisosRolMenu, User} from '../models';
+import {Credenciales, CredencialesRecuperarClave, FactorDeAutenticacionPorCodigo, Login, PermisosRolMenu, User} from '../models';
 import {LoginRepository, UserRepository} from '../repositories';
 import {AuthService, NotificacionesService, SeguridadUsuarioService} from '../services';
 
@@ -216,16 +216,56 @@ export class UserController {
       //notificar al usuarrio por correo o sms
       let datos = {
         correoDestino: user.correo,
-        mensaje: `Hola ${user.nombre} ${user.apellido}. Su codigo de segundo factor de autenticación es: ${codigo2fa}`,
+        mensaje: `Hola ${user.nombre} ${user.apellido}. Su código de segundo factor de autenticación es: ${codigo2fa}`,
       };
       let url = ConfiguracionNotificaciones.urlNotificaciones2fa;
-      this.servicioNotificaciones.EnviarCorreoElectronico(datos, url);
+      this.servicioNotificaciones.EnviarNotificacion(datos, url);
       user.clave = "";
       return user;
     }
     return new HttpErrors[401]("Las credenciales no son correctas");
   }
 
+  @post('/recuperar-clave')
+  @response(200, {
+    description: 'Recuperar clave de un usuario por medio de un sms',
+    content: {'application/json': {schema: getModelSchemaRef(User)}},
+  })
+  async RecuperarClaveUsuario(
+    @requestBody(
+      {
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(CredencialesRecuperarClave)
+          }
+        }
+      }
+    )
+    credenciales: CredencialesRecuperarClave
+  ): Promise<object> {
+    let user = await this.userRepository.findOne({
+      where: {
+        correo: credenciales.correo
+      }
+    });
+    if (user) {
+      let nuevaClave = this.servicioSeguridad.crearTextoAleatorio(5);
+      console.log(nuevaClave);
+      let claveCifrada = this.servicioSeguridad.cifrarTexto(nuevaClave);
+      user.clave = claveCifrada;
+      this.userRepository.updateById(user._id, user);
+      //notificar al usuario por sms
+      let datos = {
+        numero_telefono: user.telefono,
+        mensaje: `Hola ${user.nombre} ${user.apellido}. Su nueva clave es ${nuevaClave}`,
+      };
+      let url = ConfiguracionNotificaciones.urlNotificacionesSms;
+      this.servicioNotificaciones.EnviarNotificacion(datos, url);
+      user.clave = "";
+      return user;
+    }
+    return new HttpErrors[401]("Las credenciales no son correctas");
+  }
 
   @post('/validar-permisos')
   @response(200, {
