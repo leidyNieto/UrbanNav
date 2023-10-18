@@ -1,3 +1,5 @@
+import {authenticate} from '@loopback/authentication';
+import {service} from '@loopback/core';
 import {
   Count,
   CountSchema,
@@ -7,25 +9,23 @@ import {
   Where,
 } from '@loopback/repository';
 import {
-  post,
-  param,
+  del,
   get,
   getModelSchemaRef,
+  HttpErrors,
+  param,
   patch,
+  post,
   put,
-  del,
   requestBody,
   response,
-  HttpErrors,
 } from '@loopback/rest';
+import {UserProfile} from '@loopback/security';
+import {ConfiguracionNotificaciones} from '../config/notificaciones.config';
+import {configuracionSeguridaad} from '../config/seguridad.config';
 import {Credenciales, FactorDeAutenticacionPorCodigo, Login, PermisosRolMenu, User} from '../models';
 import {LoginRepository, UserRepository} from '../repositories';
-import { service } from '@loopback/core';
-import { AuthService, SeguridadUsuarioService } from '../services';
-import { authenticate } from '@loopback/authentication';
-import { configuracionSeguridaad } from '../config/seguridad.config';
-import { use } from 'should';
-import { UserProfile } from '@loopback/security';
+import {AuthService, NotificacionesService, SeguridadUsuarioService} from '../services';
 
 export class UserController {
   //en el controlador se inyectan dependencias generadas por loopback
@@ -33,16 +33,18 @@ export class UserController {
     //donde dice que se necesita un repositorio,este es de usuarioRepositori, dpnde definimos una variablede acceso publico,
     //esta para acceder a todas las acciones del crud dentro de la entidad usuario
     @repository(UserRepository)
-    public userRepository : UserRepository,
+    public userRepository: UserRepository,
     //se invoca el servicio de seguridad para que se pueda acceder a las funciones de este
     //en este caso el de crear clave,cifrar
     @service(SeguridadUsuarioService)
-    public servicioSeguridad:SeguridadUsuarioService,
+    public servicioSeguridad: SeguridadUsuarioService,
     @repository(LoginRepository)
     public loginrepository: LoginRepository,
     @service(AuthService)
     private servicioAuth: AuthService,
-  ) {}
+    @service(NotificacionesService)
+    public servicioNotificaciones: NotificacionesService,
+  ) { }
 
   @post('/user')
   @response(200, {
@@ -86,9 +88,10 @@ export class UserController {
   @authenticate({
     //esto lo hago por medio de un objeto
     //se envia el nombre de la estrategia de autenticacion
-    strategy:"auth",
+    strategy: "auth",
     //se envia una opciones,
-    options:[configuracionSeguridaad.menuUsuarioId,configuracionSeguridaad.listarAccion]})
+    options: [configuracionSeguridaad.menuUsuarioId, configuracionSeguridaad.listarAccion]
+  })
   @get('/user')
   @response(200, {
     description: 'Array of User model instances',
@@ -179,104 +182,110 @@ export class UserController {
     await this.userRepository.deleteById(id);
   }
 
-/*
-  Metodos personalizados para la API
-*/
+  /*
+    Metodos personalizados para la API
+  */
 
-@post('/identificar-usuario')
-@response(200, {
-  description: 'Identificar un usuario por medio de su correo y clave',
-  content: {'application/json': {schema: getModelSchemaRef(User)}},
-})
-async identificarUsuario(
-  @requestBody(
-    {
-      content:{
-        'application/json':{
-          schema: getModelSchemaRef(Credenciales)
-        }
-      }
-    }
-  )
-  credenciales: Credenciales
-): Promise<object> {
-  let user = await this.servicioSeguridad.identificarUsuario(credenciales);
-  if(user){
-    let codigo2fa = this.servicioSeguridad.crearTextoAleatorio(5);
-    let login: Login = new Login();
-    login.userId = user._id!;
-    login.codigo2fa = codigo2fa;
-    login.estadoCodigo2fa = false;
-    login.token= "";
-    login.estadoToken = false;
-    this.loginrepository.create(login);
-    //notificar al usuarrio por cooreo o sms
-    user.clave = "";
-    return user;
-  }
-  return new HttpErrors[401]("Las credenciales no son correctas");
-}
-
-
-@post('/validar-permisos')
-@response(200, {
-  description: 'Validación de permisos de un usuario para logica de negocio',
-  content: {'application/json': {schema: getModelSchemaRef(PermisosRolMenu)}},
-})
-async ValidarPermisosDeUsuario(
-  @requestBody(
-    {
-      content:{
-        'application/json':{
-          schema: getModelSchemaRef(PermisosRolMenu)
-        }
-      }
-    }
-  )
-  datos: PermisosRolMenu
-): Promise<UserProfile | undefined> {
-  let idRol = this.servicioSeguridad.obtenerRolDesdeToken(datos.token);
-  return this.servicioAuth.VerificarPermisoDeUsuarioPorRol(idRol, datos.idMenu, datos.accion);
-}
-
-@post('/verificar-2fa')
-@response(200, {
-  description: 'validar un codigo de 2fa',
-})
-async VerificarCodigo2fa(
-  @requestBody(
-    {
-      content:{
-        'application/json':{
-          schema: getModelSchemaRef(FactorDeAutenticacionPorCodigo)
-        }
-      }
-    }
-  )
-  credenciales: FactorDeAutenticacionPorCodigo
-): Promise<object> {
-  let user = await this.servicioSeguridad.validarCodigo2fa(credenciales);
-  if(user){
-  let token = this.servicioSeguridad.crearToken(user);
-  if(user){
-    user.clave = "";
-    try{
-      this.userRepository.logins(user._id).patch({
-        estadoCodigo2fa: true,
-        token: token
-      },
+  @post('/identificar-usuario')
+  @response(200, {
+    description: 'Identificar un usuario por medio de su correo y clave',
+    content: {'application/json': {schema: getModelSchemaRef(User)}},
+  })
+  async identificarUsuario(
+    @requestBody(
       {
-        estadoCodigo2fa: false
-      });
-  }catch{
-    console.log("No se ha almacenado el cambio del estado del token en la base de datos")
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(Credenciales)
+          }
+        }
+      }
+    )
+    credenciales: Credenciales
+  ): Promise<object> {
+    let user = await this.servicioSeguridad.identificarUsuario(credenciales);
+    if (user) {
+      let codigo2fa = this.servicioSeguridad.crearTextoAleatorio(5);
+      let login: Login = new Login();
+      login.userId = user._id!;
+      login.codigo2fa = codigo2fa;
+      login.estadoCodigo2fa = false;
+      login.token = "";
+      login.estadoToken = false;
+      this.loginrepository.create(login);
+      //notificar al usuarrio por correo o sms
+      let datos = {
+        correoDestino: user.correo,
+        mensaje: `Hola ${user.nombre} ${user.apellido}. Su codigo de segundo factor de autenticación es: ${codigo2fa}`,
+      };
+      let url = ConfiguracionNotificaciones.urlNotificaciones2fa;
+      this.servicioNotificaciones.EnviarCorreoElectronico(datos, url);
+      user.clave = "";
+      return user;
+    }
+    return new HttpErrors[401]("Las credenciales no son correctas");
   }
-    return {
-      user:user,
-      token:token
-    };
+
+
+  @post('/validar-permisos')
+  @response(200, {
+    description: 'Validación de permisos de un usuario para logica de negocio',
+    content: {'application/json': {schema: getModelSchemaRef(PermisosRolMenu)}},
+  })
+  async ValidarPermisosDeUsuario(
+    @requestBody(
+      {
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(PermisosRolMenu)
+          }
+        }
+      }
+    )
+    datos: PermisosRolMenu
+  ): Promise<UserProfile | undefined> {
+    let idRol = this.servicioSeguridad.obtenerRolDesdeToken(datos.token);
+    return this.servicioAuth.VerificarPermisoDeUsuarioPorRol(idRol, datos.idMenu, datos.accion);
   }
-}
-return new HttpErrors[401]("Codifo 2fa no valido");
-}
+
+  @post('/verificar-2fa')
+  @response(200, {
+    description: 'validar un codigo de 2fa',
+  })
+  async VerificarCodigo2fa(
+    @requestBody(
+      {
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(FactorDeAutenticacionPorCodigo)
+          }
+        }
+      }
+    )
+    credenciales: FactorDeAutenticacionPorCodigo
+  ): Promise<object> {
+    let user = await this.servicioSeguridad.validarCodigo2fa(credenciales);
+    if (user) {
+      let token = this.servicioSeguridad.crearToken(user);
+      if (user) {
+        user.clave = "";
+        try {
+          this.userRepository.logins(user._id).patch({
+            estadoCodigo2fa: true,
+            token: token
+          },
+            {
+              estadoCodigo2fa: false
+            });
+        } catch {
+          console.log("No se ha almacenado el cambio del estado del token en la base de datos")
+        }
+        return {
+          user: user,
+          token: token
+        };
+      }
+    }
+    return new HttpErrors[401]("Codifo 2fa no valido");
+  }
 }
