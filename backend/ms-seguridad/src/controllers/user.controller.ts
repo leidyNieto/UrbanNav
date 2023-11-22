@@ -23,7 +23,7 @@ import {
 import {UserProfile} from '@loopback/security';
 import {ConfiguracionNotificaciones} from '../config/notificaciones.config';
 import {configuracionSeguridaad} from '../config/seguridad.config';
-import {Credenciales, CredencialesRecuperarClave, FactorDeAutenticacionPorCodigo, Login, PermisosRolMenu, User} from '../models';
+import {Credenciales, CredencialesRecuperarClave, FactorDeAutenticacionPorCodigo, Login, PermisosRolMenu, Pqrsm, User} from '../models';
 import {LoginRepository, UserRepository} from '../repositories';
 import {AuthService, NotificacionesService, SeguridadUsuarioService} from '../services';
 
@@ -327,5 +327,36 @@ export class UserController {
       }
     }
     return new HttpErrors[401]("Codifo 2fa no valido");
+  }
+
+  @post('/enviar-pqrs')
+  @response(200, {
+    description: 'Enviar un mensaje PQRS al administrador',
+    content: {'application/json': {schema: getModelSchemaRef(Pqrsm)}},
+  })
+  async EnviarPQRS(
+    @requestBody(
+      {
+        content: {
+          'application/json': {
+            schema: getModelSchemaRef(Pqrsm),
+            // order: ['tipo', 'mensaje']
+          }
+        }
+      }
+    )
+    pqrss: Pqrsm
+  ): Promise<object> {
+    let mensaje = pqrss.mensaje;
+    console.log(mensaje);
+    //notificar al usuario por ses
+    let datos = {
+      tipo: pqrss.tipo,
+      mensaje: `Su mensaje PQRS es: ${mensaje}, y el tipo es: ${pqrss.tipo}`,
+
+    };
+    let url = ConfiguracionNotificaciones.urlNotificacionesPQRS;
+    this.servicioNotificaciones.EnviarNotificacion(datos, url);
+    return datos;
   }
 }
